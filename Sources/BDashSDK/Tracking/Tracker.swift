@@ -348,7 +348,7 @@ extension Tracker {
         }
 
         let maxid = TrackUtil().getMaxId(self.arrTransactionInfo)
-        let models = BDashTrackingData().findListForRequest(context, trackingId: maxid)
+        let models = BDashTrackingData.findListForRequest(context, trackingId: maxid)
         let startDate = Date()
         // リクエスト件数をセットする。
         let requestCount = (sendType == SendType.SEND) ? BDashConst.kRequestPerCount : BDashConst.kRequestPerCountForSync

@@ -69,7 +69,7 @@ public class BDashTrackingData: NSManagedObject, @unchecked Sendable {
      - parameter trackingId: トラッキングID
      - returns: 検索結果リスト
      */
-    public func findListForRequest(_ context:NSManagedObjectContext, trackingId:Int64)-> NSMutableArray {
+    public class func findListForRequest(_ context:NSManagedObjectContext, trackingId:Int64)-> NSMutableArray {
         let results:NSMutableArray = NSMutableArray()
         context.performAndWait {
             let fetchRequest = NSFetchRequest<NSFetchRequestResult>(entityName: BDashConst.kEntityName)

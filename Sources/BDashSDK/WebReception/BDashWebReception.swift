@@ -7,7 +7,7 @@ nonisolated(unsafe) var sizeUnitSetting = "auto"
 public struct BDashConstStruct {
     public static let isReactNative: Bool = false // ReactNative版の場合trueにする
 
-    public static let baseUrl: String = "https://receptions.bdash.works/"
+    public static let baseUrl: String = "https://receptions.smart-bdash.com/"
     public static let settingJsonFile: String = "v2/mobile/receptions"
 
     public static let javaScriptSuccessWebView: String = "successWebview()"

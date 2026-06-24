@@ -18,10 +18,10 @@ public struct BDashConst: Sendable {
     ///リクエスト応答時間リミット
     public static let kRequestPerLimitTime: TimeInterval = 30
     //kServerUrl:要求serverUrl
-    ///STG環境URL（v2エンドポイント）
-    public static let kServerUrl:String = "https://trackersdk.bdash.works/v2/tracking"
-    ///STG環境 トークン処理API（v2エンドポイント）
-    public static let kPushNotifyTokenApiUrl:String = "https://mobile.bdash.works/v2/notification"
+    ///本番環境URL（v2エンドポイント）
+    public static let kServerUrl:String = "https://trackersdk.smart-bdash.com/v2/tracking"
+    ///本番環境 トークン処理API（v2エンドポイント）
+    public static let kPushNotifyTokenApiUrl:String = "https://mobile.smart-bdash.com/v2/notification"
 
     ///固定文字列：enableSoundForPushNotification
     public static let kEnableSoundForPushNotification:String = "enableSoundForPushNotification"
