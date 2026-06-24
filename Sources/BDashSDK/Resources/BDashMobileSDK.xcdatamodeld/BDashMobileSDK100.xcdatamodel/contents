@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model userDefinedModelVersionIdentifier="" type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="10174" systemVersion="15G1004" minimumToolsVersion="Automatic">
+    <entity name="BDashTrackingData" representedClassName="BDashTrackingData" syncable="YES">
+        <attribute name="b_id" optional="YES" attributeType="Integer 64" defaultValueString="0" syncable="YES"/>
+        <attribute name="b_log" optional="YES" attributeType="String" syncable="YES"/>
+        <attribute name="b_unid" optional="YES" attributeType="String" syncable="YES"/>
+    </entity>
+    <elements>
+        <element name="BDashTrackingData" positionX="-63" positionY="-18" width="128" height="88"/>
+    </elements>
+</model>
