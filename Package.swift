@@ -23,13 +23,17 @@ let package = Package(
                 "WebReception/ReportDataInputCell.swift",
             ],
             resources: [
-                .process("Resources/BDashMobileSDK.xcdatamodeld")
+                .process("Resources/BDashMobileSDK.xcdatamodeld"),
+                .copy("Resources/PrivacyInfo.xcprivacy"),
             ]
         ),
         // App Extension。SDK 本体のコードには依存せず自己完結（リッチプッシュの画像DL）。
         .target(
             name: "BDashNotificationServiceExtension",
-            path: "Sources/BDashNotificationServiceExtension"
+            path: "Sources/BDashNotificationServiceExtension",
+            resources: [
+                .copy("PrivacyInfo.xcprivacy"),
+            ]
         ),
     ],
 )

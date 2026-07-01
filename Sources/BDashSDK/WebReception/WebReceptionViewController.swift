@@ -405,10 +405,6 @@ extension WebReceptionViewController {
                     }
                 } else {
                     _ = self.wr.showMessage(report: self.reports[1], onView: view, sizeUnit: "auto")
-                    // CUSTOM_LOGIN_USER　テスト時は以下のコメントアウトを外す
-                    // _ = self.wr.showMessage(report: report, onView: view)
-                    // print("customProperty: \(customProperty)")
-                    // print("reportの中のcustomProperty: \(String(describing: report.customProperty))")
                 }
             }
             self.showMessageButton.titleLabel?.alpha = 0.0

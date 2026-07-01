@@ -57,12 +57,11 @@ public final class BDashPushAlertController: ObservableObject {
     /// `notification.request.content.userInfo` を渡して呼び出す。
     /// `_sharedMediaPath` が無くても payload の画像URLから画像を非同期取得して反映する。
     ///
-    /// OS設定で通知が OFF のとき（キャッシュ値で判定）はアラートを表示しない。最新の
-    /// 許可状態で判定したい場合は `presentIfAuthorized(userInfo:)` を使うこと。
+    /// OS設定で通知が OFF のときは、呼び出し時点の許可状態を同期的に確認してアラートを表示しない。
     /// - Parameter userInfo: `willPresent` 等で受け取る通知ペイロード。
     public func present(userInfo: [AnyHashable: Any]) {
-        // OS設定で通知が OFF のときは SDK 独自アラートを表示しない（キャッシュ値で判定）
-        guard notification.isNotificationAuthorizedCached else { return }
+        // OS設定で通知が OFF のときは SDK 独自アラートを表示しない
+        guard notification.currentNotificationAuthorized() else { return }
         let contents = notification.createAlertContents(from: userInfo)
         self.contents = contents
         self.lateImage = nil

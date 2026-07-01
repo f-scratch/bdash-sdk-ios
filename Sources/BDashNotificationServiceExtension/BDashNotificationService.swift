@@ -15,6 +15,20 @@ class BDashNotificationService: UNNotificationServiceExtension {
     
     // 固定文字列：com.f_scratch.bdash.mobile.download.image
     static let kDownloadImageDomain:String = "com.f_scratch.bdash.mobile.download.image"
+
+    // 添付画像のサイズ上限。10MB を超える画像は添付せず、画像なしの通常通知として配信する。
+    private static let kMaxImageAttachmentByteSize: Int = 1000 * 1000 * 10
+
+    // メディアダウンロードのタイムアウト（秒）。
+    private static let kDownloadTimeoutSeconds: TimeInterval = 30
+
+    // タイムアウトを明示設定したメディアダウンロード用 URLSession。
+    private lazy var mediaDownloadSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = BDashNotificationService.kDownloadTimeoutSeconds
+        configuration.timeoutIntervalForResource = BDashNotificationService.kDownloadTimeoutSeconds
+        return URLSession(configuration: configuration)
+    }()
     
     // 拡張ターゲットの Info.plist から AppGroupIdentifier を取得
     // （Bundle.main は通知拡張自身のバンドルを指す）
@@ -38,8 +52,6 @@ class BDashNotificationService: UNNotificationServiceExtension {
     override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
         self.contentHandler = contentHandler
         bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
-        // 過去の一時ファイル残骸を best-effort で掃除（蓄積防止）
-        cleanUpOldTemporaryFiles()
         nonisolated(unsafe) var urlPathString :String!
         var urlCandidates: [URL] = []
         let fcmOptions = request.content.userInfo["fcm_options"] as? [AnyHashable:Any]
@@ -87,7 +99,7 @@ class BDashNotificationService: UNNotificationServiceExtension {
             return
         }
         let url = candidates[index]
-        URLSession.shared.downloadTask(with: url) { (location, response, error) in
+        self.mediaDownloadSession.downloadTask(with: url) { (location, response, error) in
             guard let location = location else {
                 self.debugLog("failure: location is nil, error: \(String(describing: error))")
                 // 次の候補へフォールバック
@@ -97,6 +109,14 @@ class BDashNotificationService: UNNotificationServiceExtension {
             // ダウンロード結果が画像としてデコード可能か検証（旧 existsAttachedImageIn 相当を1回のDLで実施）
             guard let mediaData = try? Data(contentsOf: location), UIImage(data: mediaData) != nil else {
                 self.debugLog("failure: downloaded data is not a valid image (candidate index \(index))")
+                self.downloadMedia(from: candidates, index: index + 1, urlPathString: urlPathString)
+                return
+            }
+
+            // 添付画像が上限（10MB）を超える場合は添付しない。
+            // 当該候補をスキップし、最終的に画像なしの通常通知として配信されるようにする。
+            guard mediaData.count <= BDashNotificationService.kMaxImageAttachmentByteSize else {
+                self.debugLog("failure: image exceeds limit (candidate index \(index), size \(mediaData.count) bytes)")
                 self.downloadMedia(from: candidates, index: index + 1, urlPathString: urlPathString)
                 return
             }
@@ -157,26 +177,6 @@ class BDashNotificationService: UNNotificationServiceExtension {
         didDeliver = true
         if let contentHandler = contentHandler, let bestAttemptContent = bestAttemptContent {
             contentHandler(bestAttemptContent)
-        }
-    }
-
-    // NSTemporaryDirectory 内の1時間以上前の残骸を best-effort で削除する（蓄積防止）
-    // 表示中の添付ファイル（temporarySaveURL）は削除すると添付が壊れるため、過去の残骸のみ対象とする。
-    private func cleanUpOldTemporaryFiles() {
-        let tmpDir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        // removeSharedImage() と同じ1時間ポリシー
-        let targetDate = Date(timeIntervalSinceNow: -60 * 60)
-        let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(
-            at: tmpDir,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ) else { return }
-        for file in files {
-            guard let values = try? file.resourceValues(forKeys: [.contentModificationDateKey]),
-                  let modified = values.contentModificationDate,
-                  modified < targetDate else { continue }
-            try? fm.removeItem(at: file)
         }
     }
     

@@ -366,8 +366,8 @@ extension Tracker {
         // 送信中のトランザクション情報を保持する。
         self.arrTransactionInfo.add(info)
 
-        // 送信予定のトラッキングデータリストをログ出力する
-        BDashLogger.debug(param.debugDescription)
+        // 送信予定のトラッキングデータリストをログ出力する（識別子・個人情報はマスク）
+        BDashLogger.debug(BDashLogger.maskedDescription(of: param))
         //送信タスクの生成
         let task = URLSession.shared.dataTask(with: request as URLRequest, completionHandler: {
             data, response, error in do {

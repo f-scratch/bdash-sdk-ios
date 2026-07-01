@@ -59,14 +59,14 @@ public final class NotificationRegistrar: NSObject, Sendable {
             BDashLogger.debug("hint: host app must call BDashNotification.getInstance().setFcmToken(_:) after receiving the FCM token from MessagingDelegate")
             return
         }
-        BDashLogger.debug("prepared fcmToken for server sync: \(String(describing: token))")
+        BDashLogger.debug("prepared fcmToken for server sync: \(BDashLogger.mask(token))")
         let beforeServerResponse = self.getLastServerResponseStatus()
         self.progressTokenRequestCompletion = {(type, notificationId, response) in
             Task { @MainActor in
                 BDashLogger.debug("[register] type: \(beforeServerResponse) -> \(type)")
                 BDashLogger.debug("[register] notificationId: \(notificationId ?? "nil")")
                 if let res = response {
-                    BDashLogger.debug("[register] response: \(res)")
+                    BDashLogger.debug("[register] response: \(BDashLogger.mask(data: res))")
                 }
                 self.serverResponseStatus = type
                 BDashLogger.debug("end registerToken()")
@@ -95,7 +95,7 @@ public final class NotificationRegistrar: NSObject, Sendable {
                 BDashLogger.debug("[cancel] type: \(beforeServerResponse) -> \(type)")
                 BDashLogger.debug("[cancel] notificationId: \(notificationId ?? "nil")")
                 if let res = response {
-                    BDashLogger.debug("[cancel] response: \(res)")
+                    BDashLogger.debug("[cancel] response: \(BDashLogger.mask(data: res))")
                 }
                 self.serverResponseStatus = type
                 BDashLogger.debug("end cancelToken()")

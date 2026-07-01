@@ -15,10 +15,6 @@ public final class BDashNotification: NSObject, Sendable {
     }
     nonisolated(unsafe) var fcmtkn: String? = nil
     nonisolated(unsafe) var confirmDialog = false
-    /// 直近に取得した OS の通知許可状態。`true` のときのみフォアグラウンドで SDK 独自アラートを表示する。
-    /// `notificationSettings()` は async のため、同期版 `willPresentNotification` ではこのキャッシュ値を参照する。
-    /// `applicationWillEnterForegroundSync()` / async 版 `willPresentNotification` で都度更新される。
-    nonisolated(unsafe) private var lastNotificationAuthorized = true
     /// 通信ステータス：PROHIBIT(接続禁止中)
     public static let PROHIBIT = "PROHIBIT"
     /// 通信ステータス：ENABLE(登録成功)
@@ -88,8 +84,9 @@ public final class BDashNotification: NSObject, Sendable {
     /// デフォルト sms-received1.caf
     public var soundFileName:String {
         get {
-            if let myUserDefaults = UserDefaults(suiteName: "com.sdk.myUserDefaults"){
-                return myUserDefaults.string(forKey: BDashConst.kSystemSoundFileNameForPushNotification)!
+            if let myUserDefaults = UserDefaults(suiteName: "com.sdk.myUserDefaults"),
+               let soundFileName = myUserDefaults.string(forKey: BDashConst.kSystemSoundFileNameForPushNotification) {
+                return soundFileName
             }
             else {
                 return BDashNotification.defaultSoundFileName
@@ -299,16 +296,15 @@ public final class BDashNotification: NSObject, Sendable {
         if self.lastServerResponseStatus != BDashNotification.PROHIBIT {
             self.isFirstSync = false
         }
-        // SDKにセットされているFCMトークン値を出力
-        let token = self.fcmtkn ?? "nil"
-        BDashLogger.debug("FCM Token in SDK: \(token)")
+        // SDKにセットされているFCMトークン値を出力（秘匿情報のためマスク）
+        BDashLogger.debug("FCM Token in SDK: \(BDashLogger.mask(self.fcmtkn))")
     }
     /**
      FCMトークンを設定
      */
     public func setFcmToken(fcmToken: String?) {
         self.fcmtkn = fcmToken
-        BDashLogger.debug("FCM Token set in SDK: \(fcmToken ?? "nil")")
+        BDashLogger.debug("FCM Token set in SDK: \(BDashLogger.mask(fcmToken))")
     }
 
     public func getFcmToken() -> String? {
@@ -451,15 +447,17 @@ public final class BDashNotification: NSObject, Sendable {
         }
     }
     
-    /// 直近に取得した OS の通知許可状態のキャッシュ値（同期参照用）。
-    /// 最新値が必要な場合は `refreshNotificationAuthorized()` を `await` すること。
-    @MainActor var isNotificationAuthorizedCached: Bool {
-        self.lastNotificationAuthorized
-    }
-
-    /// OS の通知許可状態を `await` で取得し、キャッシュも更新して返す。
+    /// OS の通知許可状態を `await` で取得して返す。
     @MainActor @discardableResult func refreshNotificationAuthorized() async -> Bool {
         await self.isRegisterNotification()
+    }
+
+    /// OS の通知許可状態を同期的に取得して返す。
+    ///
+    /// 後方互換の同期 API から使用する。キャッシュ値は使わず、呼び出し時点の
+    /// `UNUserNotificationCenter` の設定を completion API 経由で取得する。
+    @MainActor func currentNotificationAuthorized() -> Bool {
+        self.isRegisterNotificationSynchronously()
     }
 
     /// 端末の通知ON/OFF設定を取得する
@@ -487,13 +485,49 @@ public final class BDashNotification: NSObject, Sendable {
                 break
             }
             BDashLogger.debug("isRegisterNotification: \(status) (\(statusDetail)), later iOS 15.0")
-            self.lastNotificationAuthorized = status
             return status
         }else {
             let notificationType =  await UIApplication.shared.currentUserNotificationSettings!.types
             let status = Int(notificationType.rawValue) == 0 ? false : true
             BDashLogger.debug("isRegisterNotification: \(status), earlier iOS 10.0")
-            self.lastNotificationAuthorized = status
+            return status
+        }
+    }
+
+    /// 端末の通知ON/OFF設定を同期的に取得する
+    @MainActor private func isRegisterNotificationSynchronously() -> Bool {
+        if #available(iOS 10.0, *) {
+            final class ResultBox: @unchecked Sendable {
+                var status = false
+                var statusDetail = "unknown"
+            }
+
+            let result = ResultBox()
+            let semaphore = DispatchSemaphore(value: 0)
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                switch settings.authorizationStatus {
+                case .authorized:
+                    result.status = true
+                    result.statusDetail = "enable"
+                case .denied:
+                    result.status = false
+                    result.statusDetail = "disable"
+                case .notDetermined:
+                    result.status = false
+                    result.statusDetail = "notDetermined"
+                default:
+                    result.status = false
+                    result.statusDetail = "nonSupported"
+                }
+                semaphore.signal()
+            }
+            semaphore.wait()
+            BDashLogger.debug("isRegisterNotification(sync): \(result.status) (\(result.statusDetail)), later iOS 15.0")
+            return result.status
+        } else {
+            let notificationType = UIApplication.shared.currentUserNotificationSettings!.types
+            let status = Int(notificationType.rawValue) == 0 ? false : true
+            BDashLogger.debug("isRegisterNotification(sync): \(status), earlier iOS 10.0")
             return status
         }
     }
@@ -570,7 +604,7 @@ public final class BDashNotification: NSObject, Sendable {
         if lastStatus == BDashNotification.ENABLE {
             // FCMトークンはlastSyncTokenIdのsetter経由でKeychainに保存される
             BDashNotification.lastSyncTokenId = self.fcmtkn
-            BDashLogger.debug( "update last token.\(String(describing: BDashNotification.lastSyncTokenId))" )
+            BDashLogger.debug( "update last token.\(BDashLogger.mask(BDashNotification.lastSyncTokenId))" )
         }
         //BUSY状態から別のステータスに変更
         self.lastServerResponseStatus = lastStatus
@@ -779,27 +813,31 @@ public final class BDashNotification: NSObject, Sendable {
 
     /// `userInfo` を直接渡す async オーバーロード（独自経路・ブリッジ向け）。
     @MainActor public func willPresentNotification(userInfo: [AnyHashable: Any]) async -> UNNotificationPresentationOptions {
+        let contents = createAlertContents(from: userInfo)
         // バッジ更新等の silent payload（alert が無いもの）は表示しない
         let aps = userInfo["aps"] as? [AnyHashable: Any]
         guard aps?["alert"] != nil || userInfo["notification"] != nil else {
             return []
         }
         // OS設定で通知が OFF のときは SDK 独自アラートを表示しない。
-        // （`isRegisterNotification()` は authorizationStatus を判定し、キャッシュも更新する）
+        // （`isRegisterNotification()` は authorizationStatus を都度取得して判定する）
         guard await self.isRegisterNotification() else {
             BDashLogger.debug("willPresentNotification: skip showAlert because OS notification is disabled")
             return []
         }
+        if contents.playSound {
+            self.vibrate()
+            self.soundSE()
+        }
         self.showAlert(userInfo)
-        // SDK 独自アラートを表示するため OS バナーは抑止。音・バッジは OS に任せる。
-        return [.sound, .badge]
+        // SDK 独自アラートを表示するため OS バナーは抑止。
+        return []
     }
 
     /// フォアグラウンド通知受信時の同期版（後方互換）。
     ///
-    /// `notificationSettings()` が async のため、ここでは直近に取得した
-    /// `authorizationStatus`（`applicationWillEnterForegroundSync()` 等で更新）の
-    /// キャッシュ値を参照する。最新の許可状態で判定したい場合は async 版を使うこと。
+    /// `notificationSettings()` は async のため、後方互換の同期版では completion API を
+    /// 同期的に待ち、呼び出し時点の許可状態を確認する。
     @MainActor public func willPresentNotification(_ notification: UNNotification) -> UNNotificationPresentationOptions {
         willPresentNotification(userInfo: notification.request.content.userInfo)
     }
@@ -811,9 +849,9 @@ public final class BDashNotification: NSObject, Sendable {
         guard aps?["alert"] != nil || userInfo["notification"] != nil else {
             return []
         }
-        // OS設定で通知が OFF のときは SDK 独自アラートを表示しない（キャッシュ値で判定）
-        guard self.lastNotificationAuthorized else {
-            BDashLogger.debug("willPresentNotification(sync): skip showAlert because cached OS notification status is disabled")
+        // OS設定で通知が OFF のときは SDK 独自アラートを表示しない
+        guard self.currentNotificationAuthorized() else {
+            BDashLogger.debug("willPresentNotification(sync): skip showAlert because OS notification status is disabled")
             return []
         }
         self.showAlert(userInfo)
@@ -917,7 +955,9 @@ public final class BDashNotification: NSObject, Sendable {
                         if let data = decodedPayloadData{
                             if let jsonArray = try JSONSerialization.jsonObject(with: data, options : []) as? [AnyHashable:Any]
                             {
-                                BDashLogger.debug("\(jsonArray)")
+                                // 通知ペイロード本文は秘匿情報を含みうるため、構造（キー名・ボタン数）のみ出力する
+                                let buttonCount = (jsonArray["buttons"] as? [Any])?.count ?? 0
+                                BDashLogger.debug("custom_payload parsed: keys=\(jsonArray.keys) buttons=\(buttonCount)")
                                 if let buttonList = jsonArray["buttons"] as? Array<Dictionary<String,Any>>{
                                     for buttonItem in buttonList {
                                         var param: String?
@@ -946,9 +986,10 @@ public final class BDashNotification: NSObject, Sendable {
             }
         }
         else if fcmApi == "legacy"{
-            if let buttons = userInfo["buttons"] as? String?, let str = buttons {
-                BDashLogger.debug("buttons: \(str)")
-                let data: Data =  str.data(using: String.Encoding.utf8)!
+            if let buttons = userInfo["buttons"] as? String?, let str = buttons,
+               let data = str.data(using: String.Encoding.utf8) {
+                // ボタン定義 JSON は秘匿情報を含みうるため、文字数のみ出力する
+                BDashLogger.debug("buttons parsed: \(str.count) chars")
                 do {
                     if let buttonList = try JSONSerialization.jsonObject(with: data) as? [Dictionary<String, Any>] {
                         for buttonItem in buttonList {
@@ -1141,7 +1182,7 @@ public final class BDashNotification: NSObject, Sendable {
                             BDashLogger.debug("[register] type: \(lastResponse) -> \(type)")
                             BDashLogger.debug("[register] notificationId: \(notificationId ?? "nil")")
                             if let res = response {
-                                BDashLogger.debug("[register] response: \(res)")
+                                BDashLogger.debug("[register] response: \(BDashLogger.mask(data: res))")
                             }
                             BDashLogger.debug("end applicationWillEnterForeground()")
                         }
@@ -1161,7 +1202,7 @@ public final class BDashNotification: NSObject, Sendable {
                                 BDashLogger.debug("[cancel] type: \(lastResponse)  -> \(type)")
                                 BDashLogger.debug("[cancel] notificationId: \(notificationId ?? "nil")")
                                 if let res = response {
-                                    BDashLogger.debug("[cancel] response: \(res)")
+                                    BDashLogger.debug("[cancel] response: \(BDashLogger.mask(data: res))")
                                 }
                                 BDashLogger.debug("end applicationWillEnterForeground()")
                             }

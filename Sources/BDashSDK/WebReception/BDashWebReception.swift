@@ -654,7 +654,7 @@ public final class BDashWebReception: NSObject, Sendable {
         case .boot:
             url = BDashConstStruct.baseUrl + BDashConstStruct.settingJsonFile
         }
-        BDashLogger.debug("顧客設定APIをコールします。accessType:\(accessType.rawValue) url:\(url)")
+        BDashLogger.debug("顧客設定APIをコールします。accessType:\(accessType.rawValue) url:\(BDashLogger.mask(urlString: url))")
         
         let merged = await json.merging(self.getCommonParameter()) { (first, second) -> Any in
             return first
@@ -663,8 +663,9 @@ public final class BDashWebReception: NSObject, Sendable {
         var jsonData: Data?
         var tmpJson = merged
         tmpJson.updateValue(accessType.rawValue, forKey: WebReceptionKey.accessType)
-        // リクエストの中身のログ出力　※納品版では削除する。
-        BDashLogger.debug("リクエストの中身（tmpJson）: \(tmpJson)")
+        #if DEBUG
+        BDashLogger.debug("リクエストの中身（tmpJson）: \(BDashLogger.maskedDescription(of: tmpJson as NSDictionary))")
+        #endif
         do {
             jsonData = try JSONSerialization.data(withJSONObject: tmpJson, options: .prettyPrinted)
         } catch {
@@ -924,7 +925,7 @@ public final class BDashWebReception: NSObject, Sendable {
     @MainActor
     fileprivate func callWebReceptionApi(url: String, msgObj: GetWebReceptionObj) async -> String? {
         guard let url = URL(string: url) else { return nil }
-        BDashLogger.debug("[getWebReception Queue] web view APIをコールします。 url:\(url)")
+        BDashLogger.debug("[getWebReception Queue] web view APIをコールします。 url:\(BDashLogger.mask(urlString: url.absoluteString))")
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -948,9 +949,11 @@ public final class BDashWebReception: NSObject, Sendable {
         param["appId"] = commonPara["appId"] as? String ?? ""
         let paramStr = convertToJsonAndUrlEncode(dic: param)
         request.httpBody = paramStr.data(using: .utf8)
-        let request_body: String = String(data: request.httpBody!, encoding: .utf8)!
-        BDashLogger.debug("webview request body: \(request_body)")
-        
+        #if DEBUG
+        // リクエストボディは識別子等を含むため、マスクした辞書要約を出力する
+        BDashLogger.debug("webview request body: \(BDashLogger.maskedDescription(of: param as NSDictionary))")
+        #endif
+
         if self.getWebReceptionStatus != .callingApi {
             BDashLogger.debug("no action")
             return ""
@@ -1703,7 +1706,7 @@ extension BDashWebReception: PopupViewDelegate {
     @MainActor
     func getWebView(webView: WKWebView?, url: String, msgObj: ShowMsgObj) async {
         guard let url = URL(string: url) else { return }
-        BDashLogger.debug("[showMessage Queue] web view APIをコールします。 url:\(url)")
+        BDashLogger.debug("[showMessage Queue] web view APIをコールします。 url:\(BDashLogger.mask(urlString: url.absoluteString))")
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -1725,10 +1728,11 @@ extension BDashWebReception: PopupViewDelegate {
         }
         let paramStr = convertToJsonAndUrlEncode(dic: param)
         request.httpBody = paramStr.data(using: .utf8)
-        // リクエストのBodyをログ出力する
-        let request_body: String = String(data:request.httpBody!, encoding:String.Encoding.utf8)!
-        BDashLogger.debug("webview request body: \(request_body)")
-        
+        #if DEBUG
+        // リクエストボディは識別子等を含むため、マスクした辞書要約を出力する
+        BDashLogger.debug("webview request body: \(BDashLogger.maskedDescription(of: param as NSDictionary))")
+        #endif
+
         if self.popupStatus != .callingApi {
             // APIコール中にcloseMessageが呼ばれた場合
             BDashLogger.debug("no action")
