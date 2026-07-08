@@ -56,26 +56,14 @@ class BDashNotificationService: UNNotificationServiceExtension {
         var urlCandidates: [URL] = []
         let fcmOptions = request.content.userInfo["fcm_options"] as? [AnyHashable:Any]
         if let fcmApi = request.content.userInfo["fcm_api"] as? String {
-            if  fcmApi == "v1"{
-                // "image"はurlエンコード済み
-                guard let urlString = fcmOptions?["image"] as? String else {
-                    self.debugLog("failure: couldn't create available media URL")
-                    self.deliver()
-                    return
-                }
-                urlPathString = urlString
-                urlCandidates = makeAvailableMediaURLCandidates(urlString)
+            // "image"はurlエンコード済み
+            guard let urlString = fcmOptions?["image"] as? String else {
+                self.debugLog("failure: couldn't create available media URL")
+                self.deliver()
+                return
             }
-            else {
-                // "mediaUrl"はurlエンコード済み
-                guard let urlString = request.content.userInfo["mediaUrl"] as? String else {
-                    self.debugLog("failure: couldn't create available media URL")
-                    self.deliver()
-                    return
-                }
-                urlPathString = urlString
-                urlCandidates = makeAvailableMediaURLCandidates(urlString)
-            }
+            urlPathString = urlString
+            urlCandidates = makeAvailableMediaURLCandidates(urlString)
         }
 
         // fcm_api キーが無い等で候補URLが解決できなかった場合のクラッシュ防止

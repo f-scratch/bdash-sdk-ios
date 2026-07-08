@@ -1,71 +1,23 @@
-# bdash-sdk-ios-dev
+# bdash-sdk-ios
 
-## フォアグラウンドでのPush通知連携
+b→dash Mobile SDK is an extension library for mobile applications that enables user behavior tracking and push notifications.
+This repository contains the source code for the iOS implementation of the b→dash Mobile SDK.
 
-本SDKは Firebase 非依存です。`UNUserNotificationCenter.current().delegate` の保持は
-ホストアプリ側の責務とし、SDK は delegate を奪いません。フォアグラウンドで通知を受け取った際は、
-ホストの `willPresent` から SDK の入口メソッドを呼んでください。
 
-リッチPush（画像付き）のフォアグラウンド表示では、`_sharedMediaPath`（NSEが書き込む共有パス）が
-取得できない場合でも、SDK が payload の画像URL（fcm v1: `fcm_options.image` / legacy: `mediaUrl`）から
-画像を非同期取得し、表示中のアラートへ後から差し込みます。テキストは即時表示されます。
+## Getting Started
 
-### UIKit
+Please refer to our documentation for detailed instructions on adding the b→dash mobile SDK to your Xcode project.
 
-```swift
-import UserNotifications
-import BDashSDK
 
-extension AppDelegate: UNUserNotificationCenterDelegate {
-    // フォアグラウンド受信
-    func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                willPresent notification: UNNotification,
-                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        Task { @MainActor in
-            let options = await BDashNotification.getInstance().willPresentNotification(notification)
-            completionHandler(options)
-        }
-    }
-}
-```
+## Requirements
 
-`willPresentNotification(_:)`（async 版）は OS の通知許可状態を確認し、**許可されている場合のみ**
-SDK 独自のリッチアラートを表示します。OS設定で通知が OFF（`.denied` / `.notDetermined`）のときは
-アラートを表示せず空の options を返します。表示する場合は OS 標準バナーは抑止しつつ
-音・バッジ（`[.sound, .badge]`）を返します。バッジ更新等の silent payload（`aps.alert` 無し）も
-アラートを表示せず空の options を返します。
+This application requires:
 
-> 後方互換のため同期版 `willPresentNotification(_:) -> UNNotificationPresentationOptions` も
-> 残しています。同期版も呼び出し時点の OS 通知許可状態を確認しますが、`willPresent` では
-> 上記の async 版の利用を推奨します。
+    Xcode 26.x 以上
+    iOS 18以上
 
-### SwiftUI
 
-```swift
-import SwiftUI
-import BDashSDK
+## Author
 
-@StateObject private var alert = BDashPushAlertController()
+dataX, Inc.
 
-var body: some View {
-    RootView()
-        .bDashPushAlert(controller: alert)
-        // willPresent で受け取った userInfo を publish して present する
-        .onReceive(foregroundPushPublisher) { userInfo in
-            // OS設定で通知OFFのときは表示を抑止する（推奨）
-            Task { await alert.presentIfAuthorized(userInfo: userInfo) }
-        }
-}
-```
-
-`AppDelegate`（`@UIApplicationDelegateAdaptor`）の `willPresent` で
-`notification.request.content.userInfo` を取り出し、上記 publisher 等で
-`alert.presentIfAuthorized(userInfo:)` に渡してください。`presentIfAuthorized(userInfo:)` は
-OS の通知許可状態を確認し、OFF のときはアラートを表示しません。同期版 `present(userInfo:)` も
-残しており、こちらも呼び出し時点の OS 通知許可状態を確認します。
-
-### リッチPush（ロック画面/バナー）には Notification Service Extension が必要
-
-ロック画面やバナーに画像を表示するには、ホストアプリに
-`BDashNotificationServiceExtension` ターゲットを追加してください。
-フォアグラウンドのアプリ内アラート画像は、NSE が無くても SDK が取得して表示します。

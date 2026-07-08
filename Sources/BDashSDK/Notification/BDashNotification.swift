@@ -813,7 +813,6 @@ public final class BDashNotification: NSObject, Sendable {
 
     /// `userInfo` を直接渡す async オーバーロード（独自経路・ブリッジ向け）。
     @MainActor public func willPresentNotification(userInfo: [AnyHashable: Any]) async -> UNNotificationPresentationOptions {
-        let contents = createAlertContents(from: userInfo)
         // バッジ更新等の silent payload（alert が無いもの）は表示しない
         let aps = userInfo["aps"] as? [AnyHashable: Any]
         guard aps?["alert"] != nil || userInfo["notification"] != nil else {
@@ -824,10 +823,6 @@ public final class BDashNotification: NSObject, Sendable {
         guard await self.isRegisterNotification() else {
             BDashLogger.debug("willPresentNotification: skip showAlert because OS notification is disabled")
             return []
-        }
-        if contents.playSound {
-            self.vibrate()
-            self.soundSE()
         }
         self.showAlert(userInfo)
         // SDK 独自アラートを表示するため OS バナーは抑止。
@@ -922,8 +917,6 @@ public final class BDashNotification: NSObject, Sendable {
     @MainActor public func createAlertContents(from userInfo: [AnyHashable: Any]) -> BDashAlertViewContents {
         let contents = BDashAlertViewContents()
         let fcmApi = userInfo["fcm_api"] as? String
-
-        
         if let aps = userInfo["aps"] as? NSDictionary,
            let alert = aps["alert"] as? NSDictionary {
             contents.title = alert["title"] as? String
@@ -946,75 +939,44 @@ public final class BDashNotification: NSObject, Sendable {
                 }
             }
         }
-        if fcmApi == "v1"{
-            if let customPayload = userInfo["custom_payload"] as? String {
-                if let dataPayload = Data(base64Encoded: customPayload, options: Data.Base64DecodingOptions.ignoreUnknownCharacters){
-                    let decodedPayload = String(data: dataPayload, encoding: .utf8)
-                    let decodedPayloadData = decodedPayload?.data(using: .utf8)
-                    do {
-                        if let data = decodedPayloadData{
-                            if let jsonArray = try JSONSerialization.jsonObject(with: data, options : []) as? [AnyHashable:Any]
-                            {
-                                // 通知ペイロード本文は秘匿情報を含みうるため、構造（キー名・ボタン数）のみ出力する
-                                let buttonCount = (jsonArray["buttons"] as? [Any])?.count ?? 0
-                                BDashLogger.debug("custom_payload parsed: keys=\(jsonArray.keys) buttons=\(buttonCount)")
-                                if let buttonList = jsonArray["buttons"] as? Array<Dictionary<String,Any>>{
-                                    for buttonItem in buttonList {
-                                        var param: String?
-                                        if let rawParam = buttonItem["notification_param"] as? String {
-                                            param = rawParam.removingPercentEncoding ?? rawParam
-                                        }
-                                        let buttonItemContents = BDashAlertButtonContents(
-                                            number: buttonItem["number"] as? Int,
-                                            notificationParam: param,
-                                            label: buttonItem["label"] as? String)
-                                        contents.addAlertButton(of: buttonItemContents)
+        if let customPayload = userInfo["custom_payload"] as? String {
+            if let dataPayload = Data(base64Encoded: customPayload, options: Data.Base64DecodingOptions.ignoreUnknownCharacters){
+                let decodedPayload = String(data: dataPayload, encoding: .utf8)
+                let decodedPayloadData = decodedPayload?.data(using: .utf8)
+                do {
+                    if let data = decodedPayloadData{
+                        if let jsonArray = try JSONSerialization.jsonObject(with: data, options : []) as? [AnyHashable:Any]
+                        {
+                            // 通知ペイロード本文は秘匿情報を含みうるため、構造（キー名・ボタン数）のみ出力する
+                            let buttonCount = (jsonArray["buttons"] as? [Any])?.count ?? 0
+                            BDashLogger.debug("custom_payload parsed: keys=\(jsonArray.keys) buttons=\(buttonCount)")
+                            if let buttonList = jsonArray["buttons"] as? Array<Dictionary<String,Any>>{
+                                for buttonItem in buttonList {
+                                    var param: String?
+                                    if let rawParam = buttonItem["notification_param"] as? String {
+                                        param = rawParam.removingPercentEncoding ?? rawParam
                                     }
-                                    let buttonCounts = contents.alertButtons.count
-                                    let allCaseCount = BDashAlertViewContents.BDashAlertType.allCase.count
-                                    contents.alertType = buttonCounts >= allCaseCount ? .BDashDoubleButtonAlert : .BDashAlert
-                                    contents.validateButtonLayout()
+                                    let buttonItemContents = BDashAlertButtonContents(
+                                        number: buttonItem["number"] as? Int,
+                                        notificationParam: param,
+                                        label: buttonItem["label"] as? String)
+                                    contents.addAlertButton(of: buttonItemContents)
                                 }
-                            } else {
-                                BDashLogger.debug("bad json")
+                                let buttonCounts = contents.alertButtons.count
+                                let allCaseCount = BDashAlertViewContents.BDashAlertType.allCase.count
+                                contents.alertType = buttonCounts >= allCaseCount ? .BDashDoubleButtonAlert : .BDashAlert
+                                contents.validateButtonLayout()
                             }
+                        } else {
+                            BDashLogger.debug("bad json")
                         }
-                    } catch let error as NSError {
-                        BDashLogger.debug("\(error)")
                     }
+                } catch let error as NSError {
+                    BDashLogger.debug("\(error)")
                 }
             }
         }
-        else if fcmApi == "legacy"{
-            if let buttons = userInfo["buttons"] as? String?, let str = buttons,
-               let data = str.data(using: String.Encoding.utf8) {
-                // ボタン定義 JSON は秘匿情報を含みうるため、文字数のみ出力する
-                BDashLogger.debug("buttons parsed: \(str.count) chars")
-                do {
-                    if let buttonList = try JSONSerialization.jsonObject(with: data) as? [Dictionary<String, Any>] {
-                        for buttonItem in buttonList {
-                            var param: String?
-                            if let rawParam = buttonItem["notification_param"] as? String {
-                                param = rawParam.removingPercentEncoding ?? rawParam
-                            }
-                            let buttonItemContents = BDashAlertButtonContents(
-                                                        number: buttonItem["number"] as? Int,
-                                                        notificationParam: param,
-                                                        label: buttonItem["label"] as? String)
-                            contents.addAlertButton(of: buttonItemContents)
-                        }
-                        let buttonCounts = contents.alertButtons.count
-                        let allCaseCount = BDashAlertViewContents.BDashAlertType.allCase.count
-                        contents.alertType = buttonCounts >= allCaseCount ? .BDashDoubleButtonAlert : .BDashAlert
-                        contents.validateButtonLayout()
-                    } else {
-                        BDashLogger.debug("failure: buttonList is nil")
-                    }
-                } catch {
-                    BDashLogger.debug("failure: couldn't get the contents of buttons payload")
-                }
-            }
-        } else if let rawParam = userInfo["notification_param"] as? String {
+        if let rawParam = userInfo["notification_param"] as? String {
             contents.notificationParam = rawParam.removingPercentEncoding ?? rawParam
         }
         if let isWithOverray = userInfo["with_overray"] as? String {
@@ -1025,6 +987,7 @@ public final class BDashNotification: NSObject, Sendable {
             }
         }
         let isActive: Bool = UIApplication.shared.applicationState == .active
+        var imageSizeOver: Bool = false
         contents.playSound = isActive ? true : false
         contents.showImage = true
         if #available(iOS 10.0, *) {
@@ -1032,29 +995,40 @@ public final class BDashNotification: NSObject, Sendable {
                let mediaUrl = URL(string: mediaUrlString),
                mediaUrl.scheme == "file",
                isInsideAppGroupContainer(mediaUrl) {
-                do {
-                    let fileData = try Data(contentsOf: mediaUrl)
-                    if let image = UIImage(data: fileData) {
-                        contents.image = image
-                    } else {
-                        BDashLogger.debug("failure: couldn't get the attached image")
+                    do {
+                        let fileData = try Data(contentsOf: mediaUrl)
+                        if let image = UIImage(data: fileData) {
+                            if let mediaData = try? Data(contentsOf: mediaUrl),
+                               mediaData.count <= BDashConst.kMaxImageAttachmentByteSize,
+                               mediaUrl.pathExtension != "bmp"
+                            {
+                                contents.image = image
+                            } else {
+                                imageSizeOver = true
+                            }
+                        } else {
+                            BDashLogger.debug("failure: couldn't get the attached image")
+                        }
+                    } catch {
+                        BDashLogger.debug("failure: shared container error \(error)")
                     }
-                } catch {
-                    BDashLogger.debug("failure: shared container error \(error)")
-                }
             } else {
                 BDashLogger.debug("failure: couldn't decode the attached image media path")
             }
             // _sharedMediaPath から画像が取れなかった場合（フォアグラウンド・NSE非依存）に備え、
             // payload の画像URLを保持しておく（実際の取得は表示時に非同期で行う）。
             // NSE と同じキー: fcm v1 → fcm_options.image / legacy → mediaUrl
-            if contents.image == nil {
-                if fcmApi == "v1" {
-                    let fcmOptions = userInfo["fcm_options"] as? [AnyHashable: Any]
-                    contents.fallbackImageURLString = fcmOptions?["image"] as? String
-                } else {
-                    contents.fallbackImageURLString = userInfo["mediaUrl"] as? String
+            if !imageSizeOver && contents.image == nil {
+                if let fcmOptions = userInfo["fcm_options"] as? [AnyHashable: Any],
+                   let mediaUrl = URL(string: fcmOptions["image"] as? String ?? ""),
+                   let mediaData = try? Data(contentsOf: mediaUrl),
+                   mediaData.count <= BDashConst.kMaxImageAttachmentByteSize,
+                   mediaUrl.pathExtension != "bmp"
+                {
+                    contents.fallbackImageURLString = fcmOptions["image"] as? String
                 }
+            } else {
+                imageSizeOver = true
             }
         } else {
             BDashLogger.debug("caution: media notifications are not available")

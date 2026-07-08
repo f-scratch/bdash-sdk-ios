@@ -15,6 +15,8 @@ public struct BDashConst: Sendable {
     ///リクエスト毎のレコード件数(sync)
     public static let kRequestPerCountForSync:UInt = 1
     
+    // 添付画像のサイズ上限。10MB を超える画像は添付せず、画像なしの通常通知として配信する。
+    public static let kMaxImageAttachmentByteSize: Int = 1000 * 1000 * 10
     ///リクエスト応答時間リミット
     public static let kRequestPerLimitTime: TimeInterval = 30
     //kServerUrl:要求serverUrl
