@@ -3,12 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSPrivacyTracking</key>
-	<true/>
-	<key>NSPrivacyTrackingDomains</key>
-	<array>
-		<string>trackersdk.smart-bdash.com</string>
-		<string>mobile.smart-bdash.com</string>
-	</array>
+	<false/>
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array>
 		<dict>

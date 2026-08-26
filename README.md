@@ -14,7 +14,7 @@ Please refer to our documentation for detailed instructions on adding the b→da
 This application requires:
 
     Xcode 26.x 以上
-    iOS 18以上
+    iOS 16以上
 
 
 ## Author
