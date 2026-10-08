@@ -741,6 +741,8 @@ public final class BDashWebReception: NSObject, Sendable {
                     tmpObj.setJsonUrl(baseUrl: self.overwrittenBaseUrls.first, jsonFile: self.overwrittenJsonFiles.first)
                     self.overwrittenBaseUrls.removeFirst()
                     self.overwrittenJsonFiles.removeFirst()
+                } else {
+                    tmpObj.setJsonUrl(baseUrl: BDashConstStruct.baseUrl, jsonFile: BDashConstStruct.settingJsonFile)
                 }
                 #else
                 tmpObj.setJsonUrl(baseUrl: BDashConstStruct.baseUrl, jsonFile: BDashConstStruct.settingJsonFile)
@@ -755,6 +757,8 @@ public final class BDashWebReception: NSObject, Sendable {
                     tmpObj.setJsonUrl(baseUrl: self.overwrittenBaseUrls.first, jsonFile: self.overwrittenJsonFiles.first)
                     self.overwrittenBaseUrls.removeFirst()
                     self.overwrittenJsonFiles.removeFirst()
+                } else {
+                    tmpObj.setJsonUrl(baseUrl: BDashConstStruct.baseUrl, jsonFile: BDashConstStruct.settingJsonFile)
                 }
                 #else
                 tmpObj.setJsonUrl(baseUrl: BDashConstStruct.baseUrl, jsonFile: BDashConstStruct.settingJsonFile)
@@ -770,6 +774,8 @@ public final class BDashWebReception: NSObject, Sendable {
                     tmpObj.setJsonUrl(baseUrl: self.overwrittenBaseUrls.first, jsonFile: self.overwrittenJsonFiles.first)
                     self.overwrittenBaseUrls.removeFirst()
                     self.overwrittenJsonFiles.removeFirst()
+                } else {
+                    tmpObj.setJsonUrl(baseUrl: BDashConstStruct.baseUrl, jsonFile: BDashConstStruct.settingJsonFile)
                 }
                 #else
                 tmpObj.setJsonUrl(baseUrl: BDashConstStruct.baseUrl, jsonFile: BDashConstStruct.settingJsonFile)

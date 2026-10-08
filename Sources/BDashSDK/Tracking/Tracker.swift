@@ -10,7 +10,7 @@ public final class Tracker: NSObject, Sendable {
     // MARK: - Public Constants
 
     /// SDKバージョン
-    public static let SDK_VERSION = "7.1.0"
+    public static let SDK_VERSION = "7.1.1"
     /// 起動タイプ[ホーム画面など]: boot
     public static let BOOT_BOOT = "boot"
     /// 起動タイプ[通知]: push
