@@ -1,4 +1,5 @@
 import Foundation
+import CoreData
 import SystemConfiguration
 
 /// トラッキングデータ操作ユーティリティ
@@ -102,17 +103,20 @@ public class TrackUtil: NSObject {
       - parameter selectList:TrackingModel情報リスト
       - returns: トランザクションID
       */
-     public func generateTrasactionId(_ selectList:NSMutableArray)-> String{
-         if selectList.count > 1 {
-             let beginModel=selectList.object(at: 0) as! BDashTrackingData
-             let endModel=selectList.object(at: selectList.count-1)as! BDashTrackingData
-             return (String(describing: beginModel.b_id) + "_" + String(describing: endModel.b_id))
-         } else if selectList.count == 1 {
-             let beginModel=selectList.object(at: 0) as! BDashTrackingData
-             let endModel=selectList.object(at: 0)as! BDashTrackingData
-             return (String(describing: beginModel.b_id) + "_" + String(describing: endModel.b_id))
+     public func generateTrasactionId(_ context:NSManagedObjectContext, selectList:NSMutableArray)-> String{
+         var trasactionId = ""
+         context.performAndWait {
+             if selectList.count > 1 {
+                 let beginModel=selectList.object(at: 0) as! BDashTrackingData
+                 let endModel=selectList.object(at: selectList.count-1)as! BDashTrackingData
+                 trasactionId = (String(describing: beginModel.b_id) + "_" + String(describing: endModel.b_id))
+             } else if selectList.count == 1 {
+                 let beginModel=selectList.object(at: 0) as! BDashTrackingData
+                 let endModel=selectList.object(at: 0)as! BDashTrackingData
+                 trasactionId = (String(describing: beginModel.b_id) + "_" + String(describing: endModel.b_id))
+             }
          }
-         return ""
+         return trasactionId
      }
      /**
       ユーザデフォルトを取得する。

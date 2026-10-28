@@ -10,7 +10,7 @@ public final class Tracker: NSObject, Sendable {
     // MARK: - Public Constants
 
     /// SDKバージョン
-    public static let SDK_VERSION = "7.1.1"
+    public static let SDK_VERSION = "7.1.2"
     /// 起動タイプ[ホーム画面など]: boot
     public static let BOOT_BOOT = "boot"
     /// 起動タイプ[通知]: push
@@ -56,11 +56,14 @@ public final class Tracker: NSObject, Sendable {
     nonisolated(unsafe) private var sendState: SendState = SendState.AVAILABLE
     private let sendStateLock = NSRecursiveLock()
     private var sendStateWrapper: SendState {
-        get { return self.sendState }
+        get {
+            defer { sendStateLock.unlock() }
+            sendStateLock.lock()
+            return self.sendState
+        }
         set {
             defer { sendStateLock.unlock() }
             sendStateLock.lock()
-            BDashLogger.debug("tracking log sync process well become \(newValue.rawValue)")
             self.sendState = newValue
         }
     }
@@ -141,13 +144,11 @@ extension Tracker {
 
     /// 同期後の残ログ数を最新化する
     public func setNewLogCountUpdatedBy(processName: String) {
-        Task { @MainActor in
-            let beforeCount = self.logCount
-            let context = BDashTrackingManager.sharedManager.getContext()
-            let afterCount = BDashTrackingData.allObjects(context).count
-            self.logCount = afterCount
-            BDashLogger.debug("finished \(processName): remain log count is \(beforeCount) -> \(afterCount)")
-        }
+        let beforeCount = self.logCount
+        let context = BDashTrackingManager.sharedManager.getContext()
+        let afterCount = BDashTrackingData.allObjects(context).count
+        self.logCount = afterCount
+        BDashLogger.debug("finished \(processName): remain log count is \(beforeCount) -> \(afterCount)")
     }
 
     /**
@@ -205,16 +206,20 @@ extension Tracker {
         }
 
         // ログ1件を新規追加する
+        let semaphore = DispatchSemaphore(value: 0)
         self.tracker2Builder(sendData)
         self.initRootTrackingInfo()
         // 永続化用コンテキスト取得
         let tempContext = BDashTrackingManager.sharedManager.getContext()
-        let sendTime = TrackUtil().generateTrackingId()
-        TrackUtil().removeDelayRequest(self.arrTransactionInfo)
-        // registerBuilderData は内部の performAndWait で同期的に保存されるため、
-        // 完了まで同期的にブロックされる（旧 semaphore による同期待ちは不要）。
-        BDashTrackingData.registerBuilderData(tempContext, sendTime: sendTime, sendData: sendData)
-        self.setNewLogCountUpdatedBy(processName: sendType.rawValue)
+        // スレッド処理のブロック
+        tempContext.performAndWait {
+            let sendTime = TrackUtil().generateTrackingId()
+            TrackUtil().removeDelayRequest(self.arrTransactionInfo)
+            BDashTrackingData.registerBuilderData(tempContext, sendTime: sendTime, sendData: sendData)
+            self.setNewLogCountUpdatedBy(processName: sendType.rawValue)
+            semaphore.signal()
+        }
+        semaphore.wait()
 
         if !TrackUtil().isConnectedToNetwork() {
             BDashLogger.debug("canceled \(sendType.rawValue) : because network is dis-connection")
@@ -359,9 +364,9 @@ extension Tracker {
             self.sendStateWrapper = SendState.AVAILABLE
             return
         }
-        let param: NSMutableDictionary = await self.generateRequest(models)
+        let param: NSMutableDictionary = await self.generateRequest(context, findList: models)
         // トランザクション情報を生成する。
-        let info: TransactionInfo = self.generateTransactionInfo(models)
+        let info: TransactionInfo = self.generateTransactionInfo(context, findList: models)
         let request = self.generateURLRequest(param, info)
         // 送信中のトランザクション情報を保持する。
         self.arrTransactionInfo.add(info)
@@ -369,65 +374,56 @@ extension Tracker {
         // 送信予定のトラッキングデータリストをログ出力する（識別子・個人情報はマスク）
         BDashLogger.debug(BDashLogger.maskedDescription(of: param))
         //送信タスクの生成
-        let task = URLSession.shared.dataTask(with: request as URLRequest, completionHandler: {
-            data, response, error in do {
-                Task { @Sendable in
-                    guard let urlString = request.url?.absoluteString else { return }
-                    let dic = TrackUtil().parseGetArgments(urlString)
-                    guard let transactionId = dic["transactionId"] else { return }
-                    TrackUtil().timeInterval(startDate, transactionId: transactionId)
-                    if error == nil, let statusCode = (response as? HTTPURLResponse)?.statusCode {
-                        // statusCodeが200の場合のみ成功と判断
-                        if (statusCode == 200) {
-                            Task { @MainActor in
-                                if let data = data {
-                                    BDashLogger().debugData(data)
-                                }
-                            }
-                            let tempContext = BDashTrackingManager.sharedManager.getContext()
-                            // トラッキングIDをfrom toにセパレートする。
-                            let tanIds = transactionId.components(separatedBy: "_")
-                            if tanIds.count > 1,
-                               // fromトラッキングID
-                               let transactionId1 = NumberFormatter().number(from: tanIds[0]),
-                               // toトラッキングID
-                               let transactionId2 = NumberFormatter().number(from: tanIds[1]) {
-                                // fromトラッキングID toトラッキングIDを条件にトラッキング情報取得
-                                let findList = BDashTrackingData.findListByBetweenId(tempContext, fromTrackingId: transactionId1, toTrackingId: transactionId2)
-                                // データが存在するなら
-                                if findList.count > 0 {
-                                    // トラッキング情報を削除
-                                    BDashTrackingData.deleteObjects(tempContext, targets: findList)
-                                }
-                            }
-                        } else {
-                            Task { @MainActor in
-                                BDashLogger.debug("Failed to send tracking data.  Status code: \(statusCode)")
-                            }
-                        }
-                    } else {
-                        Task { @MainActor in
-                            BDashLogger.debug("Failed to send tracking data. Error!: \(String(describing: error)).")
-                        }
-                    }
-                    // 送信中のトランザクションIDを削除して、「送信前」の状態に戻す
-                    Task { @MainActor in
-                        TrackUtil().removeTargetKye(self.arrTransactionInfo, target: String(transactionId))
-                        self.sendStateWrapper = SendState.AVAILABLE
-                        self.runningSendType = nil
-                        self.setNewLogCountUpdatedBy(processName: sendType.rawValue)
-                    }
-                    // リクエストの前後で一定の時間間隔を確保
-                    if #available(iOS 16.0, *) {
-                        try? await Task.sleep(for: .seconds(0.5))
-                    } else {
-                        // Fallback on earlier versions
-                    }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request as URLRequest)
+            guard let urlString = request.url?.absoluteString else { return }
+            let dic = TrackUtil().parseGetArgments(urlString)
+            guard let transactionId = dic["transactionId"] else { return }
+            TrackUtil().timeInterval(startDate, transactionId: transactionId)
+            // statusCodeが200の場合のみ成功と判断
+            let statusCode = (response as! HTTPURLResponse).statusCode
+            if (statusCode == 200) {
+                Task { @MainActor in
+                    BDashLogger().debugData(data)
+                }
+                
+                let tempContext = BDashTrackingManager.sharedManager.getContext()
+                // トラッキングIDをfrom toにセパレートする。
+                let tanIds = transactionId.components(separatedBy: "_")
+                // fromトラッキングID
+                let transactionId1:NSNumber = NumberFormatter().number(from: tanIds[0])!
+                // toトラッキングID
+                let transactionId2:NSNumber = NumberFormatter().number(from: tanIds[1])!
+                // fromトラッキングID toトラッキングIDを条件にトラッキング情報取得
+                let findList =     BDashTrackingData.findListByBetweenId(tempContext, fromTrackingId: transactionId1, toTrackingId: transactionId2)
+                // データが存在するなら
+                if findList.count > 0 {
+                    // トラッキング情報を削除
+                     BDashTrackingData.deleteObjects(tempContext, targets: findList)
+                }
+            } else {
+                Task { @MainActor in
+                    BDashLogger.debug("Failed to send tracking data.  Status code: \(statusCode)")
                 }
             }
-        })
-        // タスク実行
-        task.resume()
+            // 送信中のトランザクションIDを削除して、「送信前」の状態に戻す
+            TrackUtil().removeTargetKye(self.arrTransactionInfo, target: String(transactionId))
+            self.sendStateWrapper = SendState.AVAILABLE
+            self.runningSendType = nil
+            self.setNewLogCountUpdatedBy(processName: sendType.rawValue)
+            // リクエストの前後で一定の時間間隔を確保
+            if #available(iOS 16.0, *) {
+                try? await Task.sleep(for: .seconds(0.5))
+            } else {
+                // Fallback on earlier versions
+            }
+        } catch {
+            self.sendStateWrapper = SendState.AVAILABLE
+            self.runningSendType = nil
+            Task { @MainActor in
+                BDashLogger.debug("Failed to send tracking data. Error!: \(String(describing: error)).")
+            }
+        }
     }
 
     /**
@@ -461,12 +457,16 @@ extension Tracker {
      - parameter findList: TrackingModel情報リスト
      - returns: json情報（ディクショナリオブジェクト）
      */
-    func generateRequest(_ findList: NSMutableArray) async -> NSMutableDictionary {
+    func generateRequest(_ context:NSManagedObjectContext, findList: NSMutableArray) async -> NSMutableDictionary {
         let dictionaryBase = await RootInfoModel().buildRootInfo(self.customId)
         let arr = dictionaryBase.object(forKey: "trackings") as! NSMutableArray
         for value in findList {
-            let model = value as! BDashTrackingData
-            arr.add(TrackUtil().json2Dictionary(model.b_log))
+            var blog = ""
+            context.performAndWait {
+                let model = value as! BDashTrackingData
+                blog = model.b_log
+            }
+            arr.add(TrackUtil().json2Dictionary(blog))
         }
         dictionaryBase.setValue(arr, forKey: "trackings")
         return dictionaryBase
@@ -477,8 +477,8 @@ extension Tracker {
      - parameter findList: Tracking情報リスト
      - returns: TransactionInfo
      */
-    func generateTransactionInfo(_ findList: NSMutableArray) -> TransactionInfo {
-        let transactionId = TrackUtil().generateTrasactionId(findList)
+    func generateTransactionInfo(_ context:NSManagedObjectContext, findList: NSMutableArray) -> TransactionInfo {
+        let transactionId = TrackUtil().generateTrasactionId(context, selectList: findList)
         let info = TransactionInfo()
         info.id = transactionId
         info.date = TrackUtil().generateTrackingId()

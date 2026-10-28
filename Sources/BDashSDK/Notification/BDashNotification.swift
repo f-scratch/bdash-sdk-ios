@@ -669,42 +669,40 @@ public final class BDashNotification: NSObject, Sendable {
                     if let p = param["notificationId"] {
                         paramNId = p as? String
                     }
-                    Task { @MainActor in
-                        if error == nil, let httpResponse = response as? HTTPURLResponse {
-                            // 通信成功
-                            let statusCode = httpResponse.statusCode
-                            self.lastServerResponseCode = statusCode
-                            BDashLogger.debug("B-Dash server response accepted \(statusCode)")
-                            
-                            if let paramNId = paramNId {
-                                BDashLogger.debug("B-Dash server sent notificationId \(paramNId)")
-                                self.saveKeyChain(str: paramNId)
-                            } else {
-                                self.saveKeyChain(str: "")
-                            }
-                            
-                            if statusCode == 200 {
-                                // レスポンスOK
-                                self.confirmDialog = true
-                                var status:String = BDashNotification.ENABLE
-                                if paramNId == nil {
-                                    // リクエスト時のnotificationIdがnil == 無効化
-                                    status = BDashNotification.DISABLE
-                                }
-                                self.finishNotificationStatus(status, paramNId:paramNId, data:data, completion:completion)
-                            } else {
-                                // レスポンスエラー
-                                BDashLogger.debug("Status Code Error!: ")
-                                self.finishNotificationStatus(BDashNotification.ERROR, paramNId:paramNId, data:data, completion:completion)
-                            }
+                    if error == nil, let httpResponse = response as? HTTPURLResponse {
+                        // 通信成功
+                        let statusCode = httpResponse.statusCode
+                        self.lastServerResponseCode = statusCode
+                        BDashLogger.debug("B-Dash server response accepted \(statusCode)")
+                        
+                        if let paramNId = paramNId {
+                            BDashLogger.debug("B-Dash server sent notificationId \(paramNId)")
+                            self.saveKeyChain(str: paramNId)
                         } else {
-                            // 通信失敗
-                            BDashLogger.debug("Error!: \(String(describing: error))")
-                            
-                            // 最新の通信ステータスを記憶しておく
-                            self.lastServerResponseCode = 0
+                            self.saveKeyChain(str: "")
+                        }
+                        
+                        if statusCode == 200 {
+                            // レスポンスOK
+                            self.confirmDialog = true
+                            var status:String = BDashNotification.ENABLE
+                            if paramNId == nil {
+                                // リクエスト時のnotificationIdがnil == 無効化
+                                status = BDashNotification.DISABLE
+                            }
+                            self.finishNotificationStatus(status, paramNId:paramNId, data:data, completion:completion)
+                        } else {
+                            // レスポンスエラー
+                            BDashLogger.debug("Status Code Error!: ")
                             self.finishNotificationStatus(BDashNotification.ERROR, paramNId:paramNId, data:data, completion:completion)
                         }
+                    } else {
+                        // 通信失敗
+                        BDashLogger.debug("Error!: \(String(describing: error))")
+                        
+                        // 最新の通信ステータスを記憶しておく
+                        self.lastServerResponseCode = 0
+                        self.finishNotificationStatus(BDashNotification.ERROR, paramNId:paramNId, data:data, completion:completion)
                     }
                 }
             })

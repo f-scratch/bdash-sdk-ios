@@ -24,17 +24,13 @@ public class BDashTrackingData: NSManagedObject, @unchecked Sendable {
      - returns: なし
      */
     public class func registerBuilderData(_ context:NSManagedObjectContext, sendTime:Int64 ,sendData:BaseBuilder){
-        // ログ文字列の生成は Core Data 非依存なので perform 外で行う
         let logString = TrackUtil().dic2json(sendData.mapping2dictionary())
-        // insert / プロパティ設定 / save を context 専用キュー上（performAndWait）で同期実行する
-        context.performAndWait {
-            let trackingData = NSEntityDescription.insertNewObject(forEntityName: BDashConst.kEntityName, into: context) as! BDashTrackingData
-            trackingData.b_id = NSNumber(value: sendTime as Int64)
-            trackingData.b_unid = UUID().uuidString
-            trackingData.b_log = logString
-            // 永続化処理
-            BDashTrackingManager.sharedManager.saveContext(context)
-        }
+        // 呼び出し元でperformAndWaitブロックになっているのでここではperformAndWaitは行わない
+        let trackingData = NSEntityDescription.insertNewObject(forEntityName: BDashConst.kEntityName, into: context) as! BDashTrackingData
+        trackingData.b_id = NSNumber(value: sendTime as Int64)
+        trackingData.b_unid = UUID().uuidString
+        trackingData.b_log = logString
+        BDashTrackingManager.sharedManager.saveContext(context)
     }
     
     // 1000件ある場合の削除処理

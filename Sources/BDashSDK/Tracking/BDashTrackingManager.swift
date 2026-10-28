@@ -76,21 +76,26 @@ public class BDashTrackingManager {
         return coordinator
     }()
     
-    // 永続化用の単一コンテキスト（privateQueue）。
-    // 全てのCore Data操作は、このコンテキストの perform / performAndWait 経由で実行する。
-    // mainContext / backgroundContext の二本立てを廃止し単一に集約することで、
-    // 同一データに対する2コンテキスト分裂（未保存変更の不整合・データ競合）を解消する。
-    lazy var dataContext: NSManagedObjectContext = {
+    lazy var mainContext: NSManagedObjectContext = {
+        let context = NSManagedObjectContext(concurrencyType: .mainQueueConcurrencyType)
+        context.persistentStoreCoordinator = self.persistentStoreCoordinator
+        context.undoManager = nil
+        return context
+    }()
+    
+    lazy var backgroundContext: NSManagedObjectContext = {
         let context = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
         context.persistentStoreCoordinator = self.persistentStoreCoordinator
         context.undoManager = nil
         return context
     }()
 
-    // コンテキストの取得メソッド
-    // 呼び出しスレッドに依らず常に同一の privateQueue コンテキストを返す。
     public func getContext() -> NSManagedObjectContext {
-        return self.dataContext
+        if Thread.current.isMainThread {
+            return mainContext
+        } else {
+            return backgroundContext
+        }
     }
     
     /**
