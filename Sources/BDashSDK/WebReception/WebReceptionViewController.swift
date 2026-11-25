@@ -545,7 +545,10 @@ extension WebReceptionViewController {
     }
     
     @IBAction func touchUpInsideHistoryButton(_ sender: UIButton) {
-        let statusBarHeight = UIApplication.shared.statusBarFrame.height
+        let windowScene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first
+        let statusBarHeight = windowScene?.statusBarManager?.statusBarFrame.height ?? 0
         let textFieldHeight: CGFloat = 40
         let topMargin = statusBarHeight + textFieldHeight
         

@@ -10,7 +10,7 @@ public final class Tracker: NSObject, Sendable {
     // MARK: - Public Constants
 
     /// SDKバージョン
-    public static let SDK_VERSION = "7.1.2"
+    public static let SDK_VERSION = "7.1.3"
     /// 起動タイプ[ホーム画面など]: boot
     public static let BOOT_BOOT = "boot"
     /// 起動タイプ[通知]: push
@@ -37,8 +37,6 @@ public final class Tracker: NSObject, Sendable {
 
     /// シリアルキュー
     let serialDispatchQueue = DispatchQueue(label: BDashConst.kTrackingDomain, attributes: [])
-    /// arrTransactionInfo:処理中のトランザクションIDリスト
-    nonisolated(unsafe) var arrTransactionInfo: NSMutableArray = NSMutableArray()
     /// ログインユーザーID
     public nonisolated(unsafe) var loginUserId: String!
     /// relationalKey:リレーショナルキー
@@ -204,6 +202,10 @@ extension Tracker {
         if self.logCount >= BDashConst.kTrackingMaxData {
             BDashLogger.debug("caution \(sendType.rawValue) : tracking log data is already full")
         }
+        if !BDashTrackingManager.sharedManager.existPersistentContainer {
+            BDashLogger.debug("persistentContainer load failed")
+            return
+        }
 
         // ログ1件を新規追加する
         let semaphore = DispatchSemaphore(value: 0)
@@ -214,14 +216,13 @@ extension Tracker {
         // スレッド処理のブロック
         tempContext.performAndWait {
             let sendTime = TrackUtil().generateTrackingId()
-            TrackUtil().removeDelayRequest(self.arrTransactionInfo)
             BDashTrackingData.registerBuilderData(tempContext, sendTime: sendTime, sendData: sendData)
             self.setNewLogCountUpdatedBy(processName: sendType.rawValue)
             semaphore.signal()
         }
         semaphore.wait()
 
-        if !TrackUtil().isConnectedToNetwork() {
+        if !Network.shared.isConnectedToNetwork() {
             BDashLogger.debug("canceled \(sendType.rawValue) : because network is dis-connection")
             return
         }
@@ -246,8 +247,12 @@ extension Tracker {
     public func sync() async {
         let sendType = SendType.SYNC
 
-        if !TrackUtil().isConnectedToNetwork() {
+        if !Network.shared.isConnectedToNetwork() {
             BDashLogger.debug("canceled \(sendType.rawValue) : because network connection is weak")
+            return
+        }
+        if !BDashTrackingManager.sharedManager.existPersistentContainer {
+            BDashLogger.debug("persistentContainer load failed")
             return
         }
 
@@ -346,13 +351,7 @@ extension Tracker {
     }
 
     func asyncSendInternal(_ context: NSManagedObjectContext, sendType: SendType) async {
-        if sendType == SendType.SEND && self.arrTransactionInfo.count >= BDashConst.kTransactionMax {
-            BDashLogger.debug("canceled \(sendType.rawValue) : because arrTransactionInfo.count is lager than or equal to Const.kTransactionMax")
-            self.sendStateWrapper = SendState.AVAILABLE
-            return
-        }
-
-        let maxid = TrackUtil().getMaxId(self.arrTransactionInfo)
+        let maxid = TrackUtil().getMaxId()
         let models = BDashTrackingData.findListForRequest(context, trackingId: maxid)
         let startDate = Date()
         // リクエスト件数をセットする。
@@ -368,8 +367,6 @@ extension Tracker {
         // トランザクション情報を生成する。
         let info: TransactionInfo = self.generateTransactionInfo(context, findList: models)
         let request = self.generateURLRequest(param, info)
-        // 送信中のトランザクション情報を保持する。
-        self.arrTransactionInfo.add(info)
 
         // 送信予定のトラッキングデータリストをログ出力する（識別子・個人情報はマスク）
         BDashLogger.debug(BDashLogger.maskedDescription(of: param))
@@ -406,8 +403,6 @@ extension Tracker {
                     BDashLogger.debug("Failed to send tracking data.  Status code: \(statusCode)")
                 }
             }
-            // 送信中のトランザクションIDを削除して、「送信前」の状態に戻す
-            TrackUtil().removeTargetKye(self.arrTransactionInfo, target: String(transactionId))
             self.sendStateWrapper = SendState.AVAILABLE
             self.runningSendType = nil
             self.setNewLogCountUpdatedBy(processName: sendType.rawValue)

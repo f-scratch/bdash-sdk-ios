@@ -364,7 +364,7 @@ public final class BDashNotification: NSObject, Sendable {
             return
         }
         // 通信エラー
-        if !TrackUtil().isConnectedToNetwork() {
+        if !Network.shared.isConnectedToNetwork() {
             self.lastServerResponseStatus = BDashNotification.ERROR
             saveLastServerResponseStatus()
             if let c = completion {
@@ -415,7 +415,7 @@ public final class BDashNotification: NSObject, Sendable {
             return
         }
         // 通信エラー
-        if !TrackUtil().isConnectedToNetwork() {
+        if !Network.shared.isConnectedToNetwork() {
             self.lastServerResponseStatus = BDashNotification.ERROR
             saveLastServerResponseStatus()
             if let c = completion {
@@ -884,7 +884,7 @@ public final class BDashNotification: NSObject, Sendable {
                 alert.addAction(UIAlertAction(title: "閉じる", style: .default, handler: nil))
                 return alert
             }()
-            var baseView:UIViewController = (UIApplication.shared.windows.first { $0.isKeyWindow }!.rootViewController)!
+            var baseView:UIViewController = ((UIApplication.shared.connectedScenes.first as? UIWindowScene)?.windows.first { $0.isKeyWindow }!.rootViewController)!
             while(baseView.presentedViewController != nil &&
                 !(baseView.presentedViewController?.isBeingDismissed)!) {
                     baseView = baseView.presentedViewController!

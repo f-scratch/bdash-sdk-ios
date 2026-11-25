@@ -47,7 +47,7 @@ public class BDashAlertViewController: UIViewController {
     public init(from alertContents: BDashAlertViewContents) {
         super.init(nibName: nil, bundle: nil)
         self.alertContents = alertContents
-        if let keyWindow = UIApplication.shared.windows.first(where: { $0.isKeyWindow }) {
+        if let keyWindow = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.windows.first(where: { $0.isKeyWindow }) {
             view.frame = keyWindow.bounds
         }
     }

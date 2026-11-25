@@ -1590,7 +1590,7 @@ public final class BDashWebReception: NSObject, Sendable {
                 return alert
             }()
 
-            var baseView:UIViewController = (UIApplication.shared.windows.first { $0.isKeyWindow }!.rootViewController)!
+            var baseView:UIViewController = ((UIApplication.shared.connectedScenes.first as? UIWindowScene)?.windows.first { $0.isKeyWindow }!.rootViewController)!
 
             while(baseView.presentedViewController != nil &&
                 !(baseView.presentedViewController?.isBeingDismissed)!) {
@@ -2294,7 +2294,7 @@ extension String {
 
 extension UIApplication {
     // 最前面のViewControllerを取得
-    class func BDashTopViewController(controller: UIViewController? = (UIApplication.shared.windows.first { $0.isKeyWindow }!.rootViewController)!) -> UIViewController? {
+    class func BDashTopViewController(controller: UIViewController? = ((UIApplication.shared.connectedScenes.first as? UIWindowScene)?.windows.first { $0.isKeyWindow }!.rootViewController)!) -> UIViewController? {
         if let navigationController = controller as? UINavigationController {
             return BDashTopViewController(controller: navigationController.visibleViewController)
         }

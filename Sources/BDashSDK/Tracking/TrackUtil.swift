@@ -153,19 +153,21 @@ public class TrackUtil: NSObject {
      public func currentModelName()-> String{
          var size: Int = 0
          sysctlbyname("hw.machine", nil, &size, nil, 0)
-         var machine = [CChar](repeating: 0, count: Int(size))
+         var machine = [CChar](repeating: 0, count: size)
          sysctlbyname("hw.machine", &machine, &size, nil, 0)
-         return String(cString: machine)
+         let utf8Bytes = machine.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }
+         return String(decoding: utf8Bytes, as: UTF8.self)
      }
+    
      /**
       リスト（トランザクション情報）から一番大きいTrackingModelのIDを取得
       - parameter searchList:検索リスト
       - returns: 最大のID
       
       */
-     public func getMaxId(_ searchList:NSMutableArray)-> Int64{
+     public func getMaxId(_ searchList:NSMutableArray = [])-> Int64{
          var maxId: Int64 = 0
-         for element in searchList{
+         for element in searchList {
              guard let transactionInfo = element as? TransactionInfo else { continue }
              let transact = transactionInfo.id
              if let tanIds = transact?.components(separatedBy: "_"),
@@ -224,24 +226,6 @@ public class TrackUtil: NSObject {
          objc_sync_exit(searchList)
      }
      /**
-      遅延してるリクエストを削除する。
-      - parameter searchList:検索リスト
-      - returns: なし
-      */
-     public func removeDelayRequest(_ searchList:NSMutableArray){
-         let current = generateTrackingId()
-         let mutableArray=NSMutableArray()
-         for element in searchList{
-             let info=element as! TransactionInfo
-             if (current - info.date) > 600000 {
-                 mutableArray.add(info)
-             }
-         }
-         for removeElement in mutableArray{
-             searchList.remove(removeElement)
-         }
-     }
-     /**
       クエリパラメータをDictionaryに編集する。
       - parameter searchList:検索リスト
       - returns: Dictionaryオブジェクト（属性名、値）
@@ -273,28 +257,5 @@ public class TrackUtil: NSObject {
              }
          }
          return result.copy() as! NSDictionary
-     }
-     /**
-      通信状態チェック
-      - returns: 通信可能でtrue
-      */
-     public func isConnectedToNetwork() -> Bool {
-         var zeroAddress = sockaddr_in()
-         zeroAddress.sin_len = UInt8(MemoryLayout.size(ofValue: zeroAddress))
-         zeroAddress.sin_family = sa_family_t(AF_INET)
-         guard let defaultRouteReachability = withUnsafePointer(to:&zeroAddress, {
-             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {zeroSockAddress in
-                 SCNetworkReachabilityCreateWithAddress(nil, zeroSockAddress)
-             }
-         }) else {
-             return false
-         }
-         var flags : SCNetworkReachabilityFlags = []
-         if !SCNetworkReachabilityGetFlags(defaultRouteReachability, &flags) {
-             return false
-         }
-         let isReachable = flags.contains(.reachable)
-         let needsConnection = flags.contains(.connectionRequired)
-         return (isReachable && !needsConnection)
      }
 }
